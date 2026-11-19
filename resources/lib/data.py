@@ -39,7 +39,8 @@ CHANNELS = [
         'id': 'O8',
         'name': 'een',
         'label': 'VRT 1',
-        'studio': 'Een',
+        'studio': 'VRT 1',
+        'studio_icon': 'een',
         'live_stream': 'https://www.vrt.be/vrtmax/livestream/video/vrt1/',
         'live_stream_id': 'vualto_een_geo',
         'youtube': [
@@ -56,7 +57,8 @@ CHANNELS = [
         'id': '1H',
         'name': 'canvas',
         'label': 'VRT Canvas',
-        'studio': 'Canvas',
+        'studio': 'VRT Canvas',
+        'studio_icon': 'canvas',
         'live_stream': 'https://www.vrt.be/vrtmax/livestream/video/vrt-canvas/',
         'live_stream_id': 'vualto_canvas_geo',
         'youtube': [

@@ -161,6 +161,29 @@ class TestUtils(unittest.TestCase):
         self.assertEqual('plugin://plugin.video.youtube/foo/bar/', utils.youtube_to_plugin_url('https://www.youtube.com/foo/bar'))
         self.assertEqual('plugin://plugin.video.youtube/foo/bar/baz/', utils.youtube_to_plugin_url('https://www.youtube.com/foo/bar/baz/'))
 
+    def test_channel_thumbnail(self):
+        """Prefer branded logo URLs; fall back to studios.white via studio_icon"""
+        import kodiutils
+        original = kodiutils.has_addon
+        try:
+            kodiutils.has_addon = lambda *_: True
+            self.assertEqual(
+                'https://example.com/logo.png',
+                utils.channel_thumbnail({'logo': 'https://example.com/logo.png', 'studio': 'VRT 1', 'studio_icon': 'een'}),
+            )
+            self.assertEqual(
+                'resource://resource.images.studios.white/een.png',
+                utils.channel_thumbnail({'studio': 'VRT 1', 'studio_icon': 'een'}),
+            )
+            self.assertEqual(
+                'resource://resource.images.studios.white/VRT NXT.png',
+                utils.channel_thumbnail({'studio': 'VRT NXT'}),
+            )
+            kodiutils.has_addon = lambda *_: False
+            self.assertEqual('DefaultTags.png', utils.channel_thumbnail({'studio': 'VRT 1'}))
+        finally:
+            kodiutils.has_addon = original
+
 
 if __name__ == '__main__':
     unittest.main()
