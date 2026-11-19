@@ -82,6 +82,3 @@ http://icecast.vrtcdn.be/ketnetradio-high.mp3
 
 #EXTINF:-1 radio="true" tvg-id="vrtnws-radio" tvg-name="VRT NWS" group-title="VRT Radio" tvg-logo="https://images.vrt.be/orig/logos/vrtnws.png",VRT NWS
 https://progressive-audio.vrtcdn.be/content/fixed/11_11niws-snip_hi.mp3
-
-#EXTINF:-1 radio="true" tvg-id="vrt-events-radio" tvg-name="VRT Events" group-title="VRT Radio" tvg-logo="https://images.vrt.be/orig/logo/vrt.png",VRT Events
-http://quantumcast.vrtcdn.be/vrt-event/mp3-128
