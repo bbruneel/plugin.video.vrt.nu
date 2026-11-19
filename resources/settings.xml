@@ -342,12 +342,12 @@
 					<default>true</default>
 					<control type="toggle"/>
 				</setting>
-				<setting id="vrtnws" type="boolean" label="30833" help="">
+				<setting id="vrtnws" type="boolean" label="30834" help="">
 					<level>0</level>
 					<default>true</default>
 					<control type="toggle"/>
 				</setting>
-				<setting id="vrtnxt" type="boolean" label="30834" help="">
+				<setting id="vrtnxt" type="boolean" label="30833" help="">
 					<level>0</level>
 					<default>true</default>
 					<control type="toggle"/>
