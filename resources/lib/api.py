@@ -21,6 +21,20 @@ RESUMEPOINTS_MARGIN = 30  # The margin at start/end to consider a video as watch
 LIVESTREAM_CACHE_HOURS = 24
 
 
+def epg_has_episode_vod_link(episode):
+    """Return True when an EPG tile links to a concrete VRT MAX episode page.
+
+    Recurring guide entries (e.g. Het weer) are often marked available=true with a
+    programpage, themepage/event, or missing link. Those cannot be resolved to a
+    streamId via play/url and must fall back to the 24h livestream archive.
+    """
+    action = episode.get('action') or {}
+    link = action.get('link')
+    if not link:
+        return False
+    return action.get('internalTarget') == 'episodepage'
+
+
 def get_sort(program_type):
     """Get sorting method"""
     sort = 'unsorted'
@@ -2889,20 +2903,48 @@ def convert_episode(episode, destination=None):
             start_dt = apply_epg_index_clock(start_dt, episode.get('indexMeta'))
 
         stop_dt = start_dt + duration
+        action = episode.get('action') or {}
+        link = action.get('link')
+        target = action.get('internalTarget')
+        start_local = to_brussels(start_dt).strftime('%Y-%m-%d %H:%M')
+        title_for_log = program_title or title or episode.get('title') or 'unknown'
 
-        # Fix unplayable episodes
-        if not is_playable:
-            # Play episode from past 24h livestream cache
-            if now - timedelta(hours=LIVESTREAM_CACHE_HOURS) <= start_dt <= now:
-                is_playable = True
-                start_iso = to_brussels(start_dt).isoformat()[:19]
-                stop_iso = to_brussels(stop_dt).isoformat()[:19]
-                path = url_for('play_air_date', channel, start_iso, stop_iso)
+        # Play livestream tile
+        if is_live:
+            if link:
+                path = url_for('play_url', video_url=link)
+                log(2, 'EPG livestream for {title} at {start}', title=title_for_log, start=start_local)
             else:
+                is_playable = False
                 path = url_for('noop')
-        # Play livestream
-        elif is_live:
-            path = url_for('play_url', episode['action']['link'])
+                log(1, 'EPG livestream missing link for {title} at {start}; marking unplayable',
+                    title=title_for_log, start=start_local)
+        elif epg_has_episode_vod_link(episode) and is_playable:
+            # Concrete episode VOD (unique /a-z/.../season/episode/ URL)
+            path = url_for('play_url', video_url=link)
+            log(2, 'EPG using episode VOD for {title} at {start}', title=title_for_log, start=start_local)
+        elif now - timedelta(hours=LIVESTREAM_CACHE_HOURS) <= start_dt <= now:
+            # Past (or just-started) guide item without a usable episode VOD.
+            # Common for multi-airing shows such as Het weer: available=true with
+            # programpage/themepage/no link — play/url then resolves to an empty stream.
+            is_playable = True
+            start_iso = to_brussels(start_dt).isoformat()[:19]
+            stop_iso = to_brussels(stop_dt).isoformat()[:19]
+            path = url_for('play_air_date', channel, start_iso, stop_iso)
+            log(1,
+                'EPG falling back to 24h livestream archive for {title} at {start} '
+                '(target={target}, available={available}, link={link})',
+                title=title_for_log, start=start_local, target=target,
+                available=episode.get('available'), link=link)
+        else:
+            # Future, or older than the livestream archive window
+            is_playable = False
+            path = url_for('noop')
+            log(2,
+                'EPG marking unplayable {title} at {start} '
+                '(target={target}, available={available}, link={link})',
+                title=title_for_log, start=start_local, target=target,
+                available=episode.get('available'), link=link)
 
     # Mark mixed episode categories
     if destination in ('recent', 'favorites_recent', 'favorites_episodes', 'resumepoints_continue', 'featured', 'search_query'):
