@@ -10,8 +10,8 @@ import dateutil.tz
 from api import get_epg_episodes, get_epg_list
 from data import CHANNELS, RELATIVE_DATES
 from helperobjects import TitleItem
-from kodiutils import has_addon, localize, localize_datelong, show_listing, themecolour, url_for
-from utils import apply_epg_index_clock, brussels_tz, find_entry, parse_duration, to_brussels
+from kodiutils import localize, localize_datelong, show_listing, themecolour, url_for
+from utils import apply_epg_index_clock, brussels_tz, channel_thumbnail, find_entry, parse_duration, to_brussels
 
 
 class TVGuide:
@@ -110,13 +110,7 @@ class TVGuide:
             if channel and channel != chan.get('name'):
                 continue
 
-            art_dict = {}
-
-            # Try to use the white icons for thumbnails (used for icons as well)
-            if has_addon('resource.images.studios.white'):
-                art_dict['thumb'] = 'resource://resource.images.studios.white/{studio}.png'.format(**chan)
-            else:
-                art_dict['thumb'] = 'DefaultTags.png'
+            art_dict = {'thumb': channel_thumbnail(chan)}
 
             if date:
                 label = chan.get('label')
