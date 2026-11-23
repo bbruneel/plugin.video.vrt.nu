@@ -9,8 +9,8 @@ from data import CHANNELS
 from helperobjects import TitleItem
 from kodiutils import (colour, delete_cached_thumbnail, get_cache, get_setting_bool, get_setting_int, get_url_json, has_addon, has_credentials,
                        localize, localize_datelong, localize_from_data, log, log_error, update_cache, url_for)
-from utils import (apply_epg_index_clock, brussels_tz, find_entry, reformat_image_url, shorten_link,
-                   to_brussels, url_to_program, youtube_to_plugin_url)
+from utils import (apply_epg_index_clock, brussels_tz, channel_thumbnail, find_entry, reformat_image_url,
+                   shorten_link, to_brussels, url_to_program, youtube_to_plugin_url)
 from graphql_data import EPISODE_TILE, PROGRAM_TILE
 
 
@@ -3651,14 +3651,8 @@ def get_channels(channels=None, live=True):
             continue
 
         context_menu = []
-        art_dict = {}
         path = None
-
-        # Try to use the white icons for thumbnails (used for icons as well)
-        if has_addon('resource.images.studios.white'):
-            art_dict['thumb'] = 'resource://resource.images.studios.white/{studio}.png'.format(**channel)
-        else:
-            art_dict['thumb'] = 'DefaultTags.png'
+        art_dict = {'thumb': channel_thumbnail(channel)}
 
         if not live:
             path = url_for('channels', channel=channel.get('name'))
@@ -3722,13 +3716,7 @@ def get_youtube(channels=None):
         if channels and channel.get('name') not in channels:
             continue
 
-        art_dict = {}
-
-        # Try to use the white icons for thumbnails (used for icons as well)
-        if has_addon('resource.images.studios.white'):
-            art_dict['thumb'] = 'resource://resource.images.studios.white/{studio}.png'.format(**channel)
-        else:
-            art_dict['thumb'] = 'DefaultTags.png'
+        art_dict = {'thumb': channel_thumbnail(channel)}
 
         for youtube in channel.get('youtube', []):
             path = youtube_to_plugin_url(youtube['url'])
