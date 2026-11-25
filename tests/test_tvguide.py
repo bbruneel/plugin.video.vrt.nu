@@ -9,7 +9,7 @@ import unittest
 import dateutil.tz
 from xbmcextra import kodi_to_ansi, uri_to_path
 
-from api import convert_episode
+from api import convert_episode, epg_has_episode_vod_link
 from tvguide import TVGuide
 
 xbmc = __import__('xbmc')
@@ -221,13 +221,201 @@ class TestTVGuide(unittest.TestCase):
             'status': {'text': {'small': '45 min', 'default': '45 minuten'}},
             'progress': {'durationInSeconds': 2700},
             'indexMeta': [{'type': 'default', 'value': '19:00u'}],
-            'action': {'link': 'https://www.vrt.be/vrtmax/a-z/journaal/'},
+            # Timezone/label tests need a real episode VOD target so playability
+            # logic does not grey the item out when the fixture date is old.
+            'action': {
+                'internalTarget': 'episodepage',
+                'link': '/vrtmax/a-z/vrt-nws-journaal/2026/vrt-nws-journaal-d20261116/',
+            },
             'actionItems': [],
             'trackingData': {'data': '{}'},
             'image': None,
             'statusMeta': [{'value': '45 min'}],
             'primaryMeta': [],
         }
+
+    def _epg_tile(self, title, start_dt, available=True, internal_target=None, link=None,
+                  duration_min=3, index_value=None):
+        """Build an EPG episode tile with componentId for start_dt (Brussels-aware)."""
+        from base64 import b64encode
+
+        start_ms = int(start_dt.astimezone(dateutil.tz.UTC).timestamp() * 1000)
+        decoded = (
+            'o%26|episode|o#30#0n#34#0n#30#0o#1349#10O8#10d#13{start_ms}#10#10#13#3|epg|'
+            '||||episode||||o%31|scheduleNext|O8|{date}|'
+        ).format(start_ms=start_ms, date=start_dt.strftime('%Y-%m-%d'))
+        if index_value is None:
+            index_value = start_dt.strftime('%H:%Mu')
+        action = None
+        if internal_target is not None or link is not None:
+            action = {'__typename': 'LinkAction'}
+            if internal_target is not None:
+                action['internalTarget'] = internal_target
+            if link is not None:
+                action['link'] = link
+        return {
+            'title': title,
+            'available': available,
+            'active': False,
+            'tileType': 'episode',
+            'preview': {
+                'heading': {
+                    'title': title,
+                    'description': title,
+                    'tertiaryMeta': [],
+                }
+            },
+            'componentId': '#' + b64encode(decoded.encode('utf-8')).decode('utf-8'),
+            'status': {'text': {'small': '{} min'.format(duration_min), 'default': '{} minuten'.format(duration_min)}},
+            'progress': {'durationInSeconds': duration_min * 60},
+            'indexMeta': [{'type': 'default', 'value': index_value}],
+            'action': action,
+            'actionItems': [],
+            'trackingData': {'data': '{}'},
+            'image': None,
+            'statusMeta': [{'value': '{} min'.format(duration_min)}],
+            'primaryMeta': [],
+        }
+
+    @staticmethod
+    def _patch_now(now):
+        """Patch api.datetime so convert_episode sees a fixed Brussels 'now'."""
+        from unittest import mock
+        import api as api_module
+
+        real_dt = api_module.datetime
+
+        class FakeDateTime(real_dt):  # pylint: disable=too-few-public-methods
+            """datetime stand-in with fixed now()"""
+
+            @classmethod
+            def now(cls, tz=None):
+                """Return fixed instant, converted when tz is given"""
+                return now if tz is None else now.astimezone(tz)
+
+        return mock.patch.object(api_module, 'datetime', FakeDateTime)
+
+    def test_epg_has_episode_vod_link(self):
+        """Only episodepage targets with a link count as playable VOD"""
+        self.assertTrue(epg_has_episode_vod_link({
+            'action': {'internalTarget': 'episodepage', 'link': '/vrtmax/a-z/x/1/y/'},
+        }))
+        self.assertFalse(epg_has_episode_vod_link({
+            'action': {'internalTarget': 'programpage', 'link': '/vrtmax/a-z/het-weer/'},
+        }))
+        self.assertFalse(epg_has_episode_vod_link({
+            'action': {'internalTarget': 'themepage', 'link': '/vrtmax/event/abc/'},
+        }))
+        self.assertFalse(epg_has_episode_vod_link({'action': None}))
+        self.assertFalse(epg_has_episode_vod_link({
+            'action': {'internalTarget': 'episodepage', 'link': None},
+        }))
+
+    def test_epg_past_het_weer_without_link_uses_airdate(self):
+        """Aired Het weer with available=true and no link must use 24h archive"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 23, 16, 16, tzinfo=brussels_tz())
+        start = now.replace(hour=13, minute=29, second=0, microsecond=0)
+        episode = self._epg_tile('Het weer', start, available=True, internal_target=None, link=None)
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertTrue(title_item.is_playable)
+        self.assertIn('/play/airdate/een/2026-11-23T13:29:00/', title_item.path)
+        self.assertIn('2026-11-23T13:32:00', title_item.path)
+        self.assertNotIn('greyedout', title_item.label)
+        self.assertNotIn('/noop', title_item.path)
+
+    def test_epg_past_het_weer_programpage_uses_airdate(self):
+        """Past Het weer linking only to /a-z/het-weer/ must not use play/url"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 22, 18, 9, tzinfo=brussels_tz())
+        start = now.replace(hour=18, minute=5, second=0, microsecond=0)
+        episode = self._epg_tile(
+            'Het weer', start, available=True,
+            internal_target='programpage', link='/vrtmax/a-z/het-weer/',
+        )
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertTrue(title_item.is_playable)
+        self.assertIn('/play/airdate/een/', title_item.path)
+        self.assertNotIn('/play/url/', title_item.path)
+
+    def test_epg_past_het_weer_themepage_uses_airdate(self):
+        """Past Het weer event/themepage link cannot resolve a streamId"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 23, 16, 16, tzinfo=brussels_tz())
+        start = now.replace(hour=13, minute=29, second=0, microsecond=0)
+        episode = self._epg_tile(
+            'Het weer', start, available=True,
+            internal_target='themepage',
+            link='/vrtmax/event/byUwfG4lNHxuJTB8byMzNDkjME84IzBkIzMxNzk1NDM2NzY3NzYwIzAjMCMzJQ==/',
+        )
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertTrue(title_item.is_playable)
+        self.assertIn('/play/airdate/een/2026-11-23T13:29:00/', title_item.path)
+
+    def test_epg_future_het_weer_programpage_is_unplayable(self):
+        """Future multi-airing slots must be greyed out, not fake-playable"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 23, 16, 16, tzinfo=brussels_tz())
+        start = now.replace(hour=20, minute=24, second=0, microsecond=0)
+        episode = self._epg_tile(
+            'Het weer', start, available=True,
+            internal_target='programpage', link='/vrtmax/a-z/het-weer/',
+        )
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertFalse(title_item.is_playable)
+        self.assertTrue(title_item.path.endswith('/noop'))
+        # colour() maps {greyedout} to the configured grey color name
+        self.assertIn('[COLOR=', title_item.label)
+
+    def test_epg_past_episodepage_keeps_vod_url(self):
+        """Real episode VOD links from the guide must keep play/url"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 23, 16, 16, tzinfo=brussels_tz())
+        start = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        link = '/vrtmax/a-z/mr-magoo/2/mr-magoo-mr-kat-versus-de-sokkendief/'
+        episode = self._epg_tile(
+            'Mr. Magoo', start, available=True,
+            internal_target='episodepage', link=link,
+        )
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertTrue(title_item.is_playable)
+        self.assertIn('/play/url/', title_item.path)
+        self.assertIn('mr-magoo', title_item.path)
+        self.assertNotIn('/play/airdate/', title_item.path)
+
+    def test_epg_available_false_still_uses_airdate_within_24h(self):
+        """Legacy available=false path within the archive window still works"""
+        from utils import brussels_tz
+
+        now = datetime(2026, 11, 23, 16, 16, tzinfo=brussels_tz())
+        start = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        episode = self._epg_tile('Dummy', start, available=False, link=None)
+
+        with self._patch_now(now):
+            _, _, _, title_item = convert_episode(episode, destination='tvguide')
+
+        self.assertTrue(title_item.is_playable)
+        self.assertIn('/play/airdate/een/', title_item.path)
 
     def test_convert_episode_componentid_unix_ts_to_brussels(self):
         """Non-live EPG entries decode absolute unix ms and show Brussels local time"""
