@@ -293,3 +293,19 @@ def youtube_to_plugin_url(url):
     if not url.endswith('/'):
         url += '/'
     return url
+
+
+def channel_thumbnail(channel):
+    """Return a channel thumbnail, preferring branded logo URLs over studios.white.
+
+    resource.images.studios.white still ships legacy names (een/canvas), so channels
+    can set studio_icon for that fallback while studio stays the modern brand name.
+    """
+    from kodiutils import has_addon
+    logo = channel.get('logo')
+    if logo:
+        return logo
+    studio_icon = channel.get('studio_icon') or channel.get('studio')
+    if studio_icon and has_addon('resource.images.studios.white'):
+        return 'resource://resource.images.studios.white/{}.png'.format(studio_icon)
+    return 'DefaultTags.png'

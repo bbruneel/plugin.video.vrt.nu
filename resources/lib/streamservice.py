@@ -62,6 +62,11 @@ class StreamService:
                 )
                 if episode_page.get('__typename') == 'LivestreamPage':
                     is_live_stream = True
+            if not stream_id:
+                # Avoid calling the media API with a blank id (Kodi then opens []).
+                log(1, 'No streamId for video_url {url} (page type {ptype})',
+                    url=video_url, ptype=(episode_page or {}).get('__typename'))
+                return None
             api_data = ApiData(self._CLIENT, self._VUALTO_API_URL, stream_id, '', is_live_stream)
         return api_data
 
@@ -151,6 +156,10 @@ class StreamService:
         """Main streamservice function"""
         if not api_data:
             api_data = self._get_api_data(video)
+
+        if not api_data:
+            message = localize(30987)  # No stream found, please try again!
+            return self._handle_stream_api_error(message)
 
         stream_json = self._get_stream_json(api_data, roaming)
 
